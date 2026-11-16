@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: neuroxai
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
