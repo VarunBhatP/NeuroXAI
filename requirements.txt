@@ -3,7 +3,7 @@ uvicorn
 torch
 numpy
 mne
-shap
 matplotlib
 python-multipart
 streamlit
+pandas
