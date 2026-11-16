@@ -6,5 +6,5 @@ services:
     region: singapore
     branch: main
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /
+    healthCheckPath: /healthz
     autoDeploy: true

@@ -1,10 +1,19 @@
+import os
+
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# Server-side calls go straight to the internal FastAPI process.
 API_BASE_URL = "http://127.0.0.1:8000"
+
+# Custom uploader: streams the file from the browser straight to disk instead
+# of buffering it in memory, so arbitrarily large EDF files are supported.
+_COMPONENT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "component")
+eeg_uploader = components.declare_component("eeg_uploader", path=_COMPONENT_PATH)
 
 CHANNEL_NAMES = [
     'FP1-F7','F7-T7','T7-P7','P7-O1',
@@ -41,11 +50,8 @@ st.divider()
 
 st.header("🔍 Single Window Analysis")
 
-file_pred = st.file_uploader(
-    "Upload EDF File",
-    type=["edf"],
-    key="predict_file"
-)
+st.write("Upload EDF File")
+file_pred = eeg_uploader(key="predict_file")
 
 time_seconds = st.number_input(
     "Analysis Second (Optional)",
@@ -56,30 +62,22 @@ time_seconds = st.number_input(
 
 if st.button("Run Prediction", type="primary"):
 
-    if file_pred is None:
+    if not file_pred or not file_pred.get("token"):
         st.error("Please upload an EDF file.")
     else:
         try:
 
             with st.spinner("Running NeuroXAI Analysis..."):
 
-                files = {
-                    "file": (
-                        file_pred.name,
-                        file_pred.getvalue(),
-                        file_pred.type
-                    )
-                }
-
-                params = {}
+                params = {"token": file_pred["token"]}
 
                 if time_seconds > 0:
                     params["second"] = int(time_seconds)
 
                 response = requests.post(
                     f"{API_BASE_URL}/predict",
-                    files=files,
-                    params=params
+                    params=params,
+                    timeout=3600
                 )
 
                 if response.status_code != 200:
@@ -87,7 +85,6 @@ if st.button("Run Prediction", type="primary"):
                     st.stop()
 
                 result = response.json()
-                
 
             prediction = result["prediction"]
             probability = float(result["probability"])
@@ -300,15 +297,12 @@ st.divider()
 
 st.header("📡 Full EEG Scan")
 
-file_scan = st.file_uploader(
-    "Upload EDF File For Full Scan",
-    type=["edf"],
-    key="scan_file"
-)
+st.write("Upload EDF File For Full Scan")
+file_scan = eeg_uploader(key="scan_file")
 
 if st.button("Run Full Scan"):
 
-    if file_scan is None:
+    if not file_scan or not file_scan.get("token"):
         st.error("Please upload an EDF file.")
     else:
 
@@ -316,17 +310,10 @@ if st.button("Run Full Scan"):
 
             with st.spinner("Scanning Entire EEG Recording..."):
 
-                files = {
-                    "file": (
-                        file_scan.name,
-                        file_scan.getvalue(),
-                        file_scan.type
-                    )
-                }
-
                 response = requests.post(
                     f"{API_BASE_URL}/scan",
-                    files=files
+                    params={"token": file_scan["token"]},
+                    timeout=3600
                 )
 
                 if response.status_code != 200:

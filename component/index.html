@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Source Sans Pro", sans-serif; }
+  .drop {
+    border: 2px dashed #c7c7c7;
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    color: #555;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover { border-color: #ff4b4b; }
+  .drop.drag { border-color: #ff4b4b; background: #fff5f5; }
+  .meta { font-size: 13px; color: #333; margin-top: 8px; }
+  .err { color: #b00020; font-size: 13px; margin-top: 8px; }
+  progress { width: 100%; height: 10px; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+  <div id="drop" class="drop">Click to choose, or drop an <b>EEG (.edf)</b> file here</div>
+  <input id="file" type="file" style="display:none" />
+  <progress id="prog" value="0" max="100"></progress>
+  <div id="meta" class="meta"></div>
+  <div id="err" class="err"></div>
+
+<script>
+(function () {
+  // Relative URL: the component is served from the same origin as the app,
+  // and nginx routes /api/* to the FastAPI backend.
+  var UPLOAD_URL = "/api/upload";
+
+  function post(type, payload) {
+    var msg = Object.assign({ isStreamlitMessage: true, type: type }, payload || {});
+    window.parent.postMessage(msg, "*");
+  }
+
+  function setFrameHeight() {
+    post("streamlit:setFrameHeight", { height: document.body.scrollHeight + 10 });
+  }
+
+  function setValue(value) {
+    post("streamlit:setComponentValue", { value: value, dataType: "json" });
+  }
+
+  var drop = document.getElementById("drop");
+  var input = document.getElementById("file");
+  var prog = document.getElementById("prog");
+  var meta = document.getElementById("meta");
+  var err = document.getElementById("err");
+
+  function human(n) {
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+    if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+    return n + " B";
+  }
+
+  function start(file) {
+    err.textContent = "";
+    meta.textContent = "Uploading " + file.name + " (" + human(file.size) + ") …";
+    prog.style.display = "block";
+    prog.value = 0;
+    setFrameHeight();
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", UPLOAD_URL + "?name=" + encodeURIComponent(file.name), true);
+
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) prog.value = Math.round((e.loaded / e.total) * 100);
+    };
+
+    xhr.onload = function () {
+      prog.style.display = "none";
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var res = JSON.parse(xhr.responseText);
+        meta.textContent = "✔ " + res.name + " (" + human(res.size) + ") is ready.";
+        setValue({ token: res.token, name: res.name, size: res.size });
+      } else {
+        var detail = "";
+        try { detail = JSON.parse(xhr.responseText).detail || ""; } catch (e) {}
+        err.textContent = "Upload failed (HTTP " + xhr.status + "). " + detail;
+        meta.textContent = "";
+      }
+      setFrameHeight();
+    };
+
+    xhr.onerror = function () {
+      prog.style.display = "none";
+      err.textContent = "Upload failed (network error).";
+      meta.textContent = "";
+      setFrameHeight();
+    };
+
+    // Sending the File object streams it from disk in the browser.
+    xhr.send(file);
+  }
+
+  drop.addEventListener("click", function () { input.click(); });
+  drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("drag"); });
+  drop.addEventListener("dragleave", function () { drop.classList.remove("drag"); });
+  drop.addEventListener("drop", function (e) {
+    e.preventDefault();
+    drop.classList.remove("drag");
+    if (e.dataTransfer.files && e.dataTransfer.files.length) start(e.dataTransfer.files[0]);
+  });
+  input.addEventListener("change", function () {
+    if (input.files && input.files.length) start(input.files[0]);
+  });
+
+  window.addEventListener("message", function (event) {
+    if (!event.data || event.data.type !== "streamlit:render") return;
+    setFrameHeight();
+  });
+
+  post("streamlit:componentReady", { apiVersion: 1 });
+  setFrameHeight();
+})();
+</script>
+</body>
+</html>
